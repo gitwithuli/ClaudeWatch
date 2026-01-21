@@ -1,8 +1,6 @@
 # Homebrew Tap for ClaudeWatch
 
-This tap contains the [ClaudeWatch](https://github.com/gitwithuli/usage-watcher) cask.
-
-## Installation
+## Install
 
 ```bash
 brew tap gitwithuli/tap
@@ -15,16 +13,20 @@ A minimal macOS menu bar app to track your Claude Code Pro/Max usage limits.
 
 - 🟢🟡🟠🔴 Color-coded 5h + weekly usage in menu bar
 - macOS notifications at 70%, 85%, 95%
-- Auto-retry on failures
+- **No Python required** - standalone app
 
 ## Prerequisites
 
-Claude Code CLI must be installed and authenticated first:
+Claude Code CLI must be authenticated first:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude  # opens browser for auth
+claude  # opens browser for OAuth
 ```
+
+## More Info
+
+https://github.com/gitwithuli/claudewatch
 
 ## Uninstall
 
