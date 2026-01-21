@@ -40,7 +40,7 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name='ClaudeWatch.app',
-    icon=None,
+    icon='icon.icns',
     bundle_identifier='com.gitwithuli.claudewatch',
     info_plist={
         'LSUIElement': True,
