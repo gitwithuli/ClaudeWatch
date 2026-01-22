@@ -1,6 +1,6 @@
 cask "binancewatch" do
-  version "1.0.0"
-  sha256 "63f3298c2e2cc196ddcc907973097c3973c3824cf3d9c37f0ff06841e62760d7"
+  version "1.0.1"
+  sha256 "2bc8eb90866dec1adc5555bfe9acfb06e485fa364c884abc99d5f318757f0661"
 
   url "https://github.com/gitwithuli/binancewatch/releases/download/v#{version}/BinanceWatch.zip"
   name "BinanceWatch"
