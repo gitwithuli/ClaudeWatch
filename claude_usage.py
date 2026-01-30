@@ -10,8 +10,9 @@ import requests
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from dateutil.relativedelta import relativedelta
 
 # Configuration
 POLL_INTERVAL = 120  # seconds (2 minutes)
@@ -22,6 +23,10 @@ THRESHOLDS = {
     'danger': 0.85,
     'critical': 0.95
 }
+
+# Config file for subscription date
+CONFIG_DIR = Path.home() / "Library/Application Support/ClaudeWatch"
+CONFIG_FILE = CONFIG_DIR / "config.json"
 
 # Setup logging
 LOG_PATH = Path.home() / "Library/Logs/claude-usage-monitor.log"
@@ -43,6 +48,7 @@ class ClaudeUsageApp(rumps.App):
         # Menu items
         self.five_hour_item = rumps.MenuItem("5h Limit: --")
         self.weekly_item = rumps.MenuItem("Weekly: --")
+        self.subscription_item = rumps.MenuItem("Subscription: --")
         self.status_item = rumps.MenuItem("Status: Starting...")
         self.updated_item = rumps.MenuItem("Updated: --")
 
@@ -50,12 +56,19 @@ class ClaudeUsageApp(rumps.App):
             self.five_hour_item,
             self.weekly_item,
             None,
+            self.subscription_item,
+            None,
             self.status_item,
             self.updated_item,
             None,
+            rumps.MenuItem("Set Subscription Date...", callback=self.set_subscription_date),
             rumps.MenuItem("Refresh Now", callback=self.manual_refresh),
             rumps.MenuItem("Quit", callback=rumps.quit_application),
         ]
+
+        # Load subscription config
+        self.subscription_start = self.load_subscription_config()
+        self.update_subscription_display()
 
         # State
         self.token = None
@@ -310,6 +323,107 @@ class ClaudeUsageApp(rumps.App):
         except Exception as e:
             log.warning(f"Failed to parse reset time: {e}")
             return iso_time[:16] if len(iso_time) > 16 else iso_time
+
+    def load_subscription_config(self):
+        """Load subscription start date from config file."""
+        try:
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                    start_date = config.get('subscription_start')
+                    if start_date:
+                        return datetime.strptime(start_date, '%Y-%m-%d').date()
+        except Exception as e:
+            log.warning(f"Failed to load subscription config: {e}")
+        return None
+
+    def save_subscription_config(self, start_date):
+        """Save subscription start date to config file."""
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            config = {}
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+            config['subscription_start'] = start_date.strftime('%Y-%m-%d')
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f, indent=2)
+            log.info(f"Saved subscription start date: {start_date}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to save subscription config: {e}")
+            return False
+
+    def update_subscription_display(self):
+        """Update subscription menu item with renewal info."""
+        if not self.subscription_start:
+            self.subscription_item.title = "Subscription: Not configured"
+            return
+
+        today = datetime.now().date()
+        start = self.subscription_start
+
+        # Calculate next renewal date (same day each month)
+        # Start from the subscription start date and find next renewal
+        renewal = start
+        while renewal <= today:
+            renewal = renewal + relativedelta(months=1)
+
+        days_until = (renewal - today).days
+        renewal_str = renewal.strftime('%b %d')
+
+        # Also show when subscription started
+        started_str = start.strftime('%b %d, %Y')
+
+        if days_until == 0:
+            self.subscription_item.title = f"🔄 Renews today ({renewal_str}) • Started {started_str}"
+        elif days_until == 1:
+            self.subscription_item.title = f"🔄 Renews tomorrow ({renewal_str}) • Started {started_str}"
+        elif days_until <= 7:
+            self.subscription_item.title = f"🔄 Renews in {days_until} days ({renewal_str}) • Started {started_str}"
+        else:
+            self.subscription_item.title = f"📅 Renews in {days_until} days ({renewal_str}) • Started {started_str}"
+
+    def set_subscription_date(self, _):
+        """Prompt user to set their subscription start date."""
+        window = rumps.Window(
+            message="Enter the date you subscribed to Claude Pro/Max.\nFormat: YYYY-MM-DD (e.g., 2025-01-15)",
+            title="Set Subscription Date",
+            default_text=self.subscription_start.strftime('%Y-%m-%d') if self.subscription_start else "",
+            ok="Save",
+            cancel="Cancel",
+            dimensions=(200, 24)
+        )
+        response = window.run()
+
+        if response.clicked:
+            try:
+                date_str = response.text.strip()
+                new_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+                # Validate date is not in the future
+                if new_date > datetime.now().date():
+                    rumps.notification(
+                        "ClaudeWatch",
+                        "Invalid Date",
+                        "Subscription start date cannot be in the future."
+                    )
+                    return
+
+                if self.save_subscription_config(new_date):
+                    self.subscription_start = new_date
+                    self.update_subscription_display()
+                    rumps.notification(
+                        "ClaudeWatch",
+                        "Subscription Date Saved",
+                        f"Your subscription started on {new_date.strftime('%B %d, %Y')}."
+                    )
+            except ValueError:
+                rumps.notification(
+                    "ClaudeWatch",
+                    "Invalid Date Format",
+                    "Please use YYYY-MM-DD format (e.g., 2025-01-15)."
+                )
 
 
 if __name__ == "__main__":
