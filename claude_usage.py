@@ -313,9 +313,13 @@ class ClaudeUsageApp(rumps.App):
             hours, remainder = divmod(total_seconds, 3600)
             minutes = remainder // 60
 
-            if hours > 24:
+            if hours >= 24:
                 days = hours // 24
-                return f"in {days}d"
+                remaining_hours = hours % 24
+                if remaining_hours > 0:
+                    return f"in {days}d {remaining_hours}h"
+                else:
+                    return f"in {days}d"
             elif hours > 0:
                 return f"in {hours}h {minutes}m"
             else:
