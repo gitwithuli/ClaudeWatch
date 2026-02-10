@@ -86,6 +86,39 @@ class ClaudeUsageApp(rumps.App):
         # Initial fetch
         self.safe_refresh(None)
 
+    def _read_keychain_entry(self, account=None):
+        """Read a single Keychain entry. Returns (oauth_dict, expiresAt) or (None, 0)."""
+        try:
+            cmd = ['security', 'find-generic-password', '-s', 'Claude Code-credentials']
+            if account:
+                cmd += ['-a', account]
+            cmd.append('-w')
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=10)
+            creds = json.loads(result.stdout.strip())
+            oauth = creds.get('claudeAiOauth', {})
+            return oauth, oauth.get('expiresAt', 0)
+        except Exception:
+            return None, 0
+
+    def _read_best_token(self):
+        """Read the freshest valid token from Keychain. Returns token or None."""
+        import getpass
+        username = getpass.getuser()
+
+        # Try multiple account names — Claude Code has changed the account field over time
+        candidates = []
+        for account in [username, 'Claude Code', None]:
+            oauth, expires = self._read_keychain_entry(account)
+            if oauth and oauth.get('accessToken'):
+                candidates.append((oauth, expires))
+
+        if not candidates:
+            return None
+
+        # Pick the one with the latest expiry (freshest token)
+        best_oauth = max(candidates, key=lambda x: x[1])[0]
+        return best_oauth.get('accessToken')
+
     def get_token(self, force_refresh=False):
         """Read OAuth token from macOS Keychain with retry logic."""
         if self.token and not force_refresh:
@@ -93,15 +126,7 @@ class ClaudeUsageApp(rumps.App):
 
         for attempt in range(MAX_RETRIES):
             try:
-                result = subprocess.run(
-                    ['security', 'find-generic-password',
-                     '-s', 'Claude Code-credentials', '-w'],
-                    capture_output=True, text=True, check=True, timeout=10
-                )
-                creds = json.loads(result.stdout.strip())
-                oauth = creds.get('claudeAiOauth', {})
-                token = oauth.get('accessToken')
-
+                token = self._read_best_token()
                 if token:
                     self.token = token
                     self.token_refresh_attempts = 0
@@ -150,7 +175,7 @@ class ClaudeUsageApp(rumps.App):
                 )
 
                 if resp.status_code == 401:
-                    log.warning("Token expired, refreshing...")
+                    log.warning("Token expired, re-reading from Keychain...")
                     self.token = None
                     token = self.get_token(force_refresh=True)
                     if not token:
